@@ -49,29 +49,43 @@ class Util(object):
         elif extension == 'sh':
             return 'bash'
 
+        else:
+            logging.debug(f'the extension {extension} is not supported.')
+
     @classmethod
     def set_as_executable_files(cls, files):
         for file in files:
-            st = os.stat(file)
-            os.chmod(file, st.st_mode | stat.S_IEXEC)
+            try:
+                st = os.stat(file)
+                os.chmod(file, st.st_mode | stat.S_IEXEC)
+            except Exception as error:
+                logging.debug(
+                    f'Error making executable the file {file}, error: {error}')
 
     @classmethod
     def exec_files(cls, file):
-        command = shlex.split(f"{cls._set_lang_to_file(file)}")
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-        metrics = yaml.safe_load(proc.stdout)
-        proc.communicate()
-        return metrics['metrics']
+        try:
+            command = shlex.split(f"{cls._set_lang_to_file(file)}")
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+            metrics = yaml.safe_load(proc.stdout)
+            proc.communicate()
+            return metrics['metrics']
+        except Exception as error:
+            logging.debug(f'Error executing the file {file}, error: {error}')
 
     @classmethod
     def multiprocessing_funct(cls, func, arg_list=()):
-        data = []
-        pool = multiprocessing.Pool(len(arg_list))
-        results = pool.starmap(func, arg_list)
-        for resul in results:
-            for metric in results:
-                data.extend(metric)
-        return data
+        try:
+            data = []
+            pool = multiprocessing.Pool(len(arg_list))
+            results = pool.starmap(func, arg_list)
+            for resul in results:
+                for metric in results:
+                    data.extend(metric)
+            return data
+        except Exception as error:
+            logging.debug(
+                f'Error executing multiprocessing thread, error: {error}')
 
 
 class MiscellaneousCollector(object):
@@ -83,6 +97,7 @@ class MiscellaneousCollector(object):
         Util.set_as_executable_files(self.files)
 
     def collect(self):
+        logging.debug(f'Starting to collect metrics')
         metrics_data = Util.multiprocessing_funct(
             func=Util.exec_files, arg_list=self.tuple_files)
         self._set_up_metrics(metrics_data)
@@ -92,6 +107,7 @@ class MiscellaneousCollector(object):
             yield metric
 
     def _set_up_metrics(self, metrics_data):
+        logging.debug(f'Configuring metrics')
         self._prometheus_metrics = {}
         for metric in metrics_data:
             labels = []
@@ -114,7 +130,8 @@ class MiscellaneousCollector(object):
                                                                                                           f"{metric['description']}",
                                                                                                           labels=labels)
             else:
-                print(f"The type of metric {metric['type']} is not supported")
+                logging.debug(
+                    f"The type of metric {metric['type']} is not supported")
 
     def _get_metrics(self, metrics_result):
         for metric in metrics_result:
@@ -129,12 +146,12 @@ def main():
     try:
         REGISTRY.register(MiscellaneousCollector())
         start_http_server(VIRTUAL_PORT)
-        print(
+        logging.debug(
             f"Polling http://0.0.0.0:{VIRTUAL_PORT}/metrics. Serving at port: {VIRTUAL_PORT}")
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\nInterrupted")
+        logging.debug("\nInterrupted")
         exit(0)
 
 
